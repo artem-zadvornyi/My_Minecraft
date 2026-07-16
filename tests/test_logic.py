@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ursina import Vec3  # noqa: E402
 
-from blocks import ITEMS, break_time, get_drop  # noqa: E402
+from game_data import BLOCKS, ITEMS, break_time, get_drops  # noqa: E402
 from crafting import match_recipe, normalize  # noqa: E402
 from inventory import Inventory, Slot  # noqa: E402
 from settings import CHUNK_SIZE, DIRT_DEPTH, HOTBAR_SLOTS, WATER_LEVEL  # noqa: E402
@@ -120,14 +120,17 @@ print('OK клики по палитре')
 # ----------------------------------------------------------------------
 # Блоки: добыча и скорость разрушения
 # ----------------------------------------------------------------------
-assert get_drop('grass') == 'dirt'          # трава даёт землю
-assert get_drop('stone') == 'stone'
-drops = {get_drop('leaves') for _ in range(300)}
-assert drops <= {None, 'apple'} and None in drops, drops
+import random as _random  # noqa: E402
+
+assert get_drops('grass') == [('dirt', 1)]   # трава даёт землю
+assert get_drops('stone') == [('stone', 1)]
+rng = _random.Random(7)
+leaf_drops = {tuple(get_drops('leaves', rng=rng)) for _ in range(300)}
+assert leaf_drops == {(), (('apple', 1),)}, leaf_drops  # яблоко или ничего
 assert break_time('stone', 'wooden_pickaxe') < break_time('stone', None)
 assert break_time('stone', 'wooden_shovel') == break_time('stone', None)
 assert break_time('dirt', 'wooden_shovel') < break_time('dirt', None)
-assert ITEMS['water'].hardness == float('inf')
+assert BLOCKS['water'].hardness == float('inf')
 print('OK блоки')
 
 # ----------------------------------------------------------------------

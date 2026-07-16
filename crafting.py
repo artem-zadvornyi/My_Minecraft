@@ -6,8 +6,9 @@
 from ursina import Button, Entity, Text, Vec3, camera, mouse
 from ursina.color import Color
 
-from blocks import ITEMS
+from game_data import ITEMS
 from inventory import Slot
+from rendering.texture_atlas import apply_item_icon
 from settings import HOTBAR_SLOTS
 
 # ----------------------------------------------------------------------
@@ -134,7 +135,7 @@ class CraftingUI(Entity):
             return
         item = ITEMS[slot.item]
         button.item_icon.enabled = True
-        button.item_icon.color = item.color
+        apply_item_icon(button.item_icon, item)
         button.item_label.text = item.label
         if slot.infinite:
             button.count_text.text = '∞'
@@ -159,7 +160,7 @@ class CraftingUI(Entity):
             self.cursor_text.text = ''
         else:
             self.cursor_icon.enabled = True
-            self.cursor_icon.color = ITEMS[self.cursor.item].color
+            apply_item_icon(self.cursor_icon, ITEMS[self.cursor.item])
             self.cursor_text.text = (str(self.cursor.count)
                                      if self.cursor.count > 1 else '')
 

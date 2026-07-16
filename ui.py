@@ -3,7 +3,8 @@
 from ursina import Entity, Text, Vec2, camera, invoke, window
 from ursina.color import Color
 
-from blocks import ITEMS
+from game_data import ITEMS
+from rendering.texture_atlas import apply_item_icon
 from settings import HOTBAR_SLOTS, MAX_HEALTH, MAX_HUNGER
 
 SLOT_SIZE = 0.06
@@ -121,7 +122,7 @@ class UI(Entity):
                 continue
             item = ITEMS[slot.item]
             icon.enabled = True
-            icon.color = item.color
+            apply_item_icon(icon, item)
             label.text = item.label
             if slot.infinite:
                 count.text = '∞'

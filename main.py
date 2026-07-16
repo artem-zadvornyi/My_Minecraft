@@ -13,13 +13,13 @@ from ursina import (Entity, Ursina, Vec3, application, camera, held_keys,
                     invoke, mouse, scene, window)
 from ursina.color import Color
 
-from blocks import ITEMS, break_time, get_drop, rgb
 from crafting import CraftingUI
 from game import GameState
+from game_data import BLOCKS, ITEMS, break_time, get_drops
+from game_data.definitions import rgb
 from inventory import Inventory
 from player import Player
-from settings import (APPLE_FOOD, FOG_END, FOG_START, MAX_HUNGER, REACH,
-                      WORLD_SEED)
+from settings import FOG_END, FOG_START, MAX_HUNGER, REACH, WORLD_SEED
 from ui import UI
 from world import World
 
@@ -119,11 +119,14 @@ class GameController(Entity):
 
     def _finish_break(self, pos, bid):
         """Блок сломан: кладём добычу в инвентарь и убираем блок из мира."""
-        drop = get_drop(bid)
-        if drop and inventory.add(drop, 1) > 0:
-            # инвентарь полон: блок не ломаем, чтобы добыча не пропала
-            self._reset_breaking()
-            return
+        drops = get_drops(bid, inventory.selected_slot.item)
+        for item_key, count in drops:
+            if not inventory.can_add(item_key, count):
+                # инвентарь полон: блок не ломаем, чтобы добыча не пропала
+                self._reset_breaking()
+                return
+        for item_key, count in drops:
+            inventory.add(item_key, count)
         world.set_block(pos, None)
         self._reset_breaking()
 
@@ -173,28 +176,30 @@ class GameController(Entity):
             if hit:
                 world.set_block(hit, None)
             return
-        # ПКМ: съесть яблоко или поставить блок
+        # ПКМ: съесть еду или поставить блок
         if key == 'right mouse down':
             slot = inventory.selected_slot
             if slot.empty:
                 return
-            if slot.item == 'apple':
-                # при полной сытости яблоко не тратится впустую
+            item = ITEMS[slot.item]
+            if item.food > 0:
+                # при полной сытости еда не тратится впустую
                 if state.hunger < MAX_HUNGER:
-                    state.eat(APPLE_FOOD)
+                    state.eat(item.food)
                     inventory.consume_selected(1)
                 return
-            if not ITEMS[slot.item].is_block:
-                return
+            block_key = item.placeable_block
+            if block_key is None:
+                return  # предмет — не блок
             hit, prev = self.target()
             if hit is None or prev is None:
                 return
             existing = world.get_block(prev)
-            if existing is not None and existing != 'water':
-                return  # место занято (в воду ставить можно)
-            if ITEMS[slot.item].solid and player.intersects_block(prev):
+            if existing is not None and not BLOCKS[existing].replaceable:
+                return  # место занято (жидкость перекрывать можно)
+            if BLOCKS[block_key].collision and player.intersects_block(prev):
                 return  # нельзя ставить блок в самого себя
-            world.set_block(prev, slot.item)
+            world.set_block(prev, block_key)
             inventory.consume_selected(1)
 
 
@@ -238,6 +243,12 @@ def _smoke_checks():
     assert state.mode == 'survival'
     total = sum(s.count for s in inventory.slots if s.item == 'dirt')
     assert total == 70  # инвентарь выживания сохранился
+    # витрина текстур для визуальной проверки скриншотом
+    sx, sz = floor(spawn.x), floor(spawn.z)
+    hh = world.height_at(sx, sz + 4)
+    world.set_block((sx - 1, hh + 1, sz + 4), 'planks')
+    world.set_block((sx, hh + 1, sz + 4), 'wood')
+    world.set_block((sx + 1, hh + 1, sz + 4), 'water')
     # окно крафта: собираем лопату программно
     craft.open()
     player.frozen = True

@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Инвентарь: данные слотов панели быстрого доступа (без интерфейса)."""
-from blocks import ITEMS
+"""Инвентарь: данные слотов панели быстрого доступа (без интерфейса).
+
+Имена, размеры стопок и палитра креатива берутся из реестра предметов.
+"""
+from game_data import ITEMS
 from settings import HOTBAR_SLOTS
 
 
@@ -81,6 +84,21 @@ class Inventory:
         self.notify()
         return count
 
+    def can_add(self, item_id, count=1):
+        """Поместятся ли предметы (без изменения инвентаря)."""
+        if self.creative:
+            return True
+        max_stack = ITEMS[item_id].max_stack
+        free = 0
+        for slot in self.slots:
+            if slot.item == item_id and not slot.infinite:
+                free += max_stack - slot.count
+            elif slot.empty:
+                free += max_stack
+            if free >= count:
+                return True
+        return False
+
     def consume_selected(self, n=1):
         """Израсходовать n предметов из выбранного слота."""
         slot = self.selected_slot
@@ -92,11 +110,13 @@ class Inventory:
         self.notify()
 
     def set_creative_palette(self):
-        """Креатив: панель с бесконечной палитрой блоков."""
+        """Креатив: бесконечная палитра из реестра предметов."""
         self.creative = True
-        palette = ['grass', 'dirt', 'stone', 'sand', 'planks', 'wood',
-                   'leaves', 'water']
-        self.slots = [Slot(item, 1, infinite=True) for item in palette]
+        palette = sorted(
+            (item for item in ITEMS if item.creative_palette is not None),
+            key=lambda item: item.creative_palette)
+        self.slots = [Slot(item.key, 1, infinite=True)
+                      for item in palette[:HOTBAR_SLOTS]]
         while len(self.slots) < HOTBAR_SLOTS:
             self.slots.append(Slot())
         self.selected = min(self.selected, HOTBAR_SLOTS - 1)

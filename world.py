@@ -12,7 +12,9 @@ from panda3d.core import TransparencyAttrib
 from ursina import Entity, Mesh, Vec3, destroy
 from ursina.color import Color
 
-from blocks import ITEMS
+from game_data import BLOCKS
+from game_data.blocks import DIRT, GRASS, LEAVES, SAND, STONE, WATER, WOOD
+from rendering.texture_atlas import get_atlas
 from settings import (BASE_HEIGHT, CHUNK_SIZE, COARSE_STEP, DIRT_DEPTH,
                       FOG_END, FOG_START, HEIGHT_AMPLITUDE, NOISE_SCALE,
                       REACH, RENDER_DISTANCE, SAND_LEVEL, TREE_CHANCE,
@@ -77,6 +79,28 @@ def _make_noise(seed):
     return noise2
 
 
+_WHITE = Color(1, 1, 1, 1)
+
+
+def _face_uvs(face_index, corners, rect):
+    """UV четырёх вершин грани: развёртка тайла по осям грани.
+
+    Для верха/низа текстура ложится в плане XZ, для боковых граней
+    вертикаль текстуры следует за Y (верх тайла — верх блока).
+    """
+    u0, v0, u1, v1 = rect
+    result = []
+    for cx, cy, cz in corners:
+        if face_index in (0, 1):    # верх / низ
+            a, b = cx, cz
+        elif face_index in (2, 3):  # +x / -x
+            a, b = cz, cy
+        else:                       # +z / -z
+            a, b = cx, cy
+        result.append((u0 + (u1 - u0) * a, v0 + (v1 - v0) * b))
+    return result
+
+
 # Грани куба: (смещение к соседу, 4 вершины обхода, множитель яркости).
 # Разная яркость граней создаёт эффект объёма без настоящего освещения.
 _FACES = (
@@ -108,7 +132,7 @@ class World:
         self.edits = {}    # правки игрока: (x, y, z) -> id или None (сломан)
         self._height_cache = {}   # (x, z) -> высота поверхности
         self._coarse_cache = {}   # узлы грубой сетки шума
-        self._face_colors = {}    # кэш цветов граней: (id, грань) -> Color
+        self._face_styles = {}    # кэш граней: (ключ, грань) -> (uv, Color)
         self._gen_queue = []      # чанки, ожидающие генерации
         self._dirty = set()       # чанки, ожидающие перестройки меша
         self._last_player_chunk = None
@@ -170,8 +194,14 @@ class World:
         return self.blocks.get(pos)
 
     def is_solid(self, pos):
+        """Есть ли в клетке блок с коллизией (для физики игрока)."""
         bid = self.blocks.get(pos)
-        return bid is not None and ITEMS[bid].solid
+        return bid is not None and BLOCKS[bid].collision
+
+    def is_liquid(self, pos):
+        """Жидкость ли в клетке (плавучесть, гашение урона от падения)."""
+        bid = self.blocks.get(pos)
+        return bid is not None and BLOCKS[bid].liquid
 
     def set_block(self, pos, bid):
         """Поставить блок (bid) или сломать (bid=None) с обновлением меша."""
@@ -212,18 +242,18 @@ class World:
                 # слои: камень в глубине, земля, сверху трава или песок
                 for y in range(0, h + 1):
                     if y <= h - DIRT_DEPTH:
-                        bid = 'stone'
+                        bid = STONE.key
                     elif y < h:
-                        bid = 'dirt'
+                        bid = DIRT.key
                     else:
-                        bid = 'sand' if h <= SAND_LEVEL else 'grass'
+                        bid = SAND.key if h <= SAND_LEVEL else GRASS.key
                     pos = (x, y, z)
                     blocks[pos] = bid
                     positions.add(pos)
                 # низины заполняются водой
                 for y in range(h + 1, WATER_LEVEL + 1):
                     pos = (x, y, z)
-                    blocks[pos] = 'water'
+                    blocks[pos] = WATER.key
                     positions.add(pos)
                 # деревья (только в глубине чанка, чтобы крона не выходила за край)
                 if (h > SAND_LEVEL and 2 <= lx <= CHUNK_SIZE - 3
@@ -255,86 +285,105 @@ class World:
                         continue  # срезаем углы — крона выглядит круглее
                     pos = (x + dx, y, z + dz)
                     if pos not in blocks:
-                        blocks[pos] = 'leaves'
+                        blocks[pos] = LEAVES.key
                         positions.add(pos)
         # макушка крестом
         for dx, dz in ((0, 0), (1, 0), (-1, 0), (0, 1), (0, -1)):
             pos = (x + dx, h + 6, z + dz)
             if pos not in blocks:
-                blocks[pos] = 'leaves'
+                blocks[pos] = LEAVES.key
                 positions.add(pos)
         # ствол (перекрывает листву)
         for y in range(h + 1, h + 5):
             pos = (x, y, z)
-            blocks[pos] = 'wood'
+            blocks[pos] = WOOD.key
             positions.add(pos)
 
     # ------------------------------------------------------------------
     # Построение мешей
     # ------------------------------------------------------------------
-    def _face_color(self, bid, face_index, shade):
-        """Цвет грани блока с учётом затенения (кэшируется)."""
+    def _face_style(self, bid, face_index, shade):
+        """(цвет, 4 UV-координаты) грани блока с кэшированием.
+
+        С текстурой цвет вершин — только затенение (и tint, если задан);
+        без текстуры — белый тайл атласа + запасной цвет блока.
+        UV зависят только от (блок, грань), поэтому кэшируются целиком.
+        """
         key = (bid, face_index)
-        col = self._face_colors.get(key)
-        if col is None:
-            item = ITEMS[bid]
-            if face_index == 0 and item.top_color is not None:
-                base = item.top_color
-            elif face_index == 1 and item.bottom_color is not None:
-                base = item.bottom_color
+        style = self._face_styles.get(key)
+        if style is None:
+            block = BLOCKS[bid]
+            atlas = get_atlas()
+            rect = atlas.uv(block.faces.by_index(face_index)) if atlas else None
+            if rect is not None:
+                base = block.tint if block.tint is not None else _WHITE
             else:
-                base = item.color
-            col = Color(base[0] * shade, base[1] * shade, base[2] * shade, base[3])
-            self._face_colors[key] = col
-        return col
+                rect = atlas.white_uv if atlas else (0.0, 0.0, 1.0, 1.0)
+                if face_index == 0 and block.top_color is not None:
+                    base = block.top_color
+                elif face_index == 1 and block.bottom_color is not None:
+                    base = block.bottom_color
+                else:
+                    base = block.color
+            col = Color(base[0] * shade, base[1] * shade, base[2] * shade,
+                        base[3])
+            corners = _FACES[face_index][1]
+            style = (col, tuple(_face_uvs(face_index, corners, rect)))
+            self._face_styles[key] = style
+        return style
 
     def _build_chunk_mesh(self, chunk):
         """Собирает меш чанка: только грани, видимые снаружи."""
         blocks = self.blocks
-        solid_v, solid_t, solid_c = [], [], []
-        water_v, water_t, water_c = [], [], []
+        solid = ([], [], [], [])  # вершины, треугольники, цвета, uv
+        liquid = ([], [], [], [])
         for pos in chunk.positions:
             bid = blocks.get(pos)
             if bid is None:
                 continue
             x, y, z = pos
-            is_water = bid == 'water'
+            is_liquid = BLOCKS[bid].liquid
             for fi, (n, corners, shade) in enumerate(_FACES):
                 npos = (x + n[0], y + n[1], z + n[2])
                 if npos[1] < 0:
                     continue  # дно мира не рисуем
                 nb = blocks.get(npos)
-                if is_water:
-                    # вода рисует грань только на границе с воздухом
+                if is_liquid:
+                    # жидкость рисует грань только на границе с воздухом
                     if nb is not None:
                         continue
-                    verts, tris, cols = water_v, water_t, water_c
+                    verts, tris, cols, uvs = liquid
                 else:
                     # грань скрыта, если сосед непрозрачный
-                    if nb is not None and not ITEMS[nb].transparent:
+                    if nb is not None and not BLOCKS[nb].transparent:
                         continue
-                    verts, tris, cols = solid_v, solid_t, solid_c
+                    verts, tris, cols, uvs = solid
                 b = len(verts)
                 for c in corners:
                     verts.append((x + c[0], y + c[1], z + c[2]))
                 tris += (b, b + 1, b + 2, b, b + 2, b + 3)
-                col = self._face_color(bid, fi, shade)
+                col, uv_quad = self._face_style(bid, fi, shade)
                 cols += (col, col, col, col)
+                uvs += uv_quad
         chunk.solid_entity = self._apply_mesh(
-            chunk.solid_entity, solid_v, solid_t, solid_c, water=False)
+            chunk.solid_entity, *solid, water=False)
         chunk.water_entity = self._apply_mesh(
-            chunk.water_entity, water_v, water_t, water_c, water=True)
+            chunk.water_entity, *liquid, water=True)
 
     @staticmethod
-    def _apply_mesh(entity, verts, tris, cols, water):
+    def _apply_mesh(entity, verts, tris, cols, uvs, water):
         # сущность пересоздаётся целиком: замена model на живой сущности
         # оставляет артефакты старой геометрии
         if entity:
             destroy(entity)
         if not verts:
             return None
-        mesh = Mesh(vertices=verts, triangles=tris, colors=cols, static=True)
+        mesh = Mesh(vertices=verts, triangles=tris, colors=cols, uvs=uvs,
+                    static=True)
         entity = Entity(model=mesh, double_sided=True)
+        atlas = get_atlas()
+        if atlas is not None:
+            entity.texture = atlas.texture
         # новые сущности не получают туман автоматически — задаём вручную
         entity.set_shader_input('fog_start', FOG_START)
         entity.set_shader_input('fog_end', FOG_END)
@@ -431,7 +480,7 @@ class World:
         t = 0.0
         while t <= max_dist:
             bid = self.blocks.get((x, y, z))
-            if bid is not None and bid != 'water':
+            if bid is not None and not BLOCKS[bid].liquid:
                 return (x, y, z), prev
             prev = (x, y, z)
             if t_mx <= t_my and t_mx <= t_mz:

@@ -75,7 +75,7 @@ class Player(Entity):
         dx = move.x * speed * dt
         dz = move.z * speed * dt
 
-        in_water = self.world.get_block(self._feet_block()) == 'water'
+        in_water = self.world.is_liquid(self._feet_block())
 
         # --- вертикальная скорость ---
         if self.flying:
@@ -109,8 +109,7 @@ class Player(Entity):
                 # урон от падения считается по высшей точке полёта;
                 # воду проверяем и в точке приземления: in_water с начала
                 # кадра устаревает при быстром падении в мелкую воду
-                landed_in_water = (
-                    self.world.get_block(self._feet_block()) == 'water')
+                landed_in_water = self.world.is_liquid(self._feet_block())
                 fall = self._peak_y - self.y
                 if not in_water and not landed_in_water and self.on_hard_land:
                     self.on_hard_land(fall)
