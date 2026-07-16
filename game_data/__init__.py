@@ -5,11 +5,15 @@
 
     from game_data import BLOCKS, ITEMS, break_time, get_drops, can_harvest
 """
+from game_data.biomes import BIOMES
 from game_data.blocks import BLOCKS
-from game_data.definitions import BlockDef, Drop, FaceTextures, ItemDef, rgb
+from game_data.definitions import (BiomeDef, BlockDef, Drop, FaceTextures,
+                                   ItemDef, rgb)
 from game_data.items import ITEMS
 from game_data.mining import break_time, can_harvest, get_drops
 from game_data.registry import Registry, RegistryError
+
+_TREE_KINDS = {'oak', 'birch', 'spruce'}
 
 
 def validate():
@@ -31,6 +35,23 @@ def validate():
             raise RegistryError(
                 f'предмет {item.key!r}: placeable_block ссылается на '
                 f'несуществующий блок {item.placeable_block!r}')
+    for biome in BIOMES:
+        for key in (biome.surface, biome.subsurface, biome.underwater):
+            if key not in BLOCKS:
+                raise RegistryError(
+                    f'биом {biome.key!r}: блок {key!r} не зарегистрирован')
+        for kind, weight in biome.trees:
+            if kind not in _TREE_KINDS or weight <= 0:
+                raise RegistryError(
+                    f'биом {biome.key!r}: некорректное дерево {kind!r}')
+        for block_key, chance in biome.decorations:
+            if block_key not in BLOCKS:
+                raise RegistryError(
+                    f'биом {biome.key!r}: украшение {block_key!r} '
+                    f'не зарегистрировано')
+            if not 0 < chance <= 1:
+                raise RegistryError(
+                    f'биом {biome.key!r}: вероятность {chance}')
 
 
 validate()

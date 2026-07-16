@@ -14,16 +14,18 @@ from game_data.registry import Registry
 
 ITEMS = Registry('предмет')
 
-# Порядок палитры креатива (сохраняем исторический порядок панели)
+# Порядок палитры креатива (исторический порядок панели + снег)
 _CREATIVE_PALETTE = ('grass', 'dirt', 'stone', 'sand', 'planks',
-                     'wood', 'leaves', 'water')
+                     'wood', 'leaves', 'water', 'snow')
 
 # --- предметы-блоки: по одному на каждый блок реестра ---
-for _i, _block in enumerate(BLOCKS.values(), start=1):
+# id предмета-блока = id блока: block.id задан явно и зарезервирован,
+# поэтому id предметов не зависят от порядка регистрации блоков
+for _block in BLOCKS.values():
     _palette = (_CREATIVE_PALETTE.index(_block.key)
                 if _block.key in _CREATIVE_PALETTE else None)
     ITEMS.register(ItemDef(
-        id=_i, key=_block.key, name=_block.name, category='block',
+        id=_block.id, key=_block.key, name=_block.name, category='block',
         icon=_block.faces.north,  # боковая текстура нагляднее всего
         icon_color=_block.color,
         max_stack=_block.max_stack,

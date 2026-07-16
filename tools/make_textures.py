@@ -152,6 +152,216 @@ def planks():
     return img
 
 
+def gravel():
+    rng = random.Random(11)
+    img = filled((136, 126, 120))
+    # крупная галька: пятна 2x2 разных оттенков
+    for _ in range(22):
+        x, y = rng.randrange(SIZE), rng.randrange(SIZE)
+        c = vary(rng.choice(((150, 140, 132), (112, 104, 99), (95, 90, 88))), 8, rng)
+        for dx in range(2):
+            for dy in range(2):
+                img.putpixel(((x + dx) % SIZE, (y + dy) % SIZE), c)
+    return img
+
+
+def snow():
+    rng = random.Random(12)
+    img = filled((238, 244, 250))
+    speckle(img, (226, 234, 244), 6, 0.35, rng)
+    return img
+
+
+def birch_log():
+    rng = random.Random(13)
+    img = filled((216, 215, 204))
+    speckle(img, (216, 215, 204), 8, 0.35, rng)
+    # чёрные чечевички берёзовой коры
+    for _ in range(9):
+        x, y = rng.randrange(SIZE), rng.randrange(SIZE)
+        w = rng.randint(2, 4)
+        for dx in range(w):
+            img.putpixel(((x + dx) % SIZE, y), (48, 46, 42, 255))
+    return img
+
+
+def birch_log_top():
+    rng = random.Random(14)
+    img = filled((198, 187, 155))
+    cx = cy = (SIZE - 1) / 2
+    for y in range(SIZE):
+        for x in range(SIZE):
+            d = ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5
+            if int(d) % 3 == 0:
+                img.putpixel((x, y), vary((172, 160, 128), 8, rng))
+    for i in range(SIZE):
+        for x, y in ((i, 0), (i, SIZE - 1), (0, i), (SIZE - 1, i)):
+            img.putpixel((x, y), vary((214, 212, 200), 8, rng))
+    return img
+
+
+def spruce_log():
+    rng = random.Random(15)
+    img = filled((74, 55, 34))
+    for x in range(SIZE):
+        base = (60, 44, 27) if x % 3 == 0 else (84, 63, 39)
+        for y in range(SIZE):
+            if rng.random() < 0.7:
+                img.putpixel((x, y), vary(base, 8, rng))
+    return img
+
+
+def spruce_log_top():
+    rng = random.Random(16)
+    img = filled((122, 96, 60))
+    cx = cy = (SIZE - 1) / 2
+    for y in range(SIZE):
+        for x in range(SIZE):
+            d = ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5
+            if int(d) % 2 == 0:
+                img.putpixel((x, y), vary((100, 78, 48), 6, rng))
+    for i in range(SIZE):
+        for x, y in ((i, 0), (i, SIZE - 1), (0, i), (SIZE - 1, i)):
+            img.putpixel((x, y), vary((66, 49, 30), 8, rng))
+    return img
+
+
+def birch_leaves():
+    rng = random.Random(17)
+    img = filled((96, 160, 78))
+    speckle(img, (78, 136, 62), 10, 0.45, rng)
+    speckle(img, (118, 182, 96), 8, 0.2, rng)
+    return img
+
+
+def spruce_leaves():
+    rng = random.Random(18)
+    img = filled((38, 84, 56))
+    speckle(img, (30, 68, 46), 8, 0.45, rng)
+    speckle(img, (52, 104, 70), 8, 0.18, rng)
+    return img
+
+
+def _transparent():
+    return Image.new('RGBA', (SIZE, SIZE), (0, 0, 0, 0))
+
+
+def tall_grass():
+    rng = random.Random(19)
+    img = _transparent()
+    # пучок травинок от земли вверх
+    for bx in range(2, SIZE - 2, 2):
+        h = rng.randint(6, 12)
+        x = bx
+        for i in range(h):
+            y = SIZE - 1 - i
+            img.putpixel((max(0, min(SIZE - 1, x)), y),
+                         vary((88, 152, 58), 18, rng))
+            if rng.random() < 0.3:
+                x += rng.choice((-1, 1))
+    return img
+
+
+def _flower(seed, petal):
+    rng = random.Random(seed)
+    img = _transparent()
+    # стебель
+    for i in range(7):
+        img.putpixel((8, SIZE - 1 - i), vary((62, 118, 48), 10, rng))
+    img.putpixel((7, SIZE - 4), (62, 118, 48, 255))  # листик
+    # цветок 3x3 с сердцевиной
+    for dx in range(-1, 2):
+        for dy in range(-1, 2):
+            img.putpixel((8 + dx, 7 + dy), vary(petal, 12, rng))
+    img.putpixel((8, 7), (240, 208, 82, 255))
+    return img
+
+
+def flower_red():
+    return _flower(20, (196, 46, 38))
+
+
+def flower_yellow():
+    return _flower(21, (222, 188, 34))
+
+
+def _mushroom(seed, cap):
+    rng = random.Random(seed)
+    img = _transparent()
+    # ножка
+    for i in range(4):
+        img.putpixel((8, SIZE - 1 - i), vary((214, 205, 186), 8, rng))
+    # шляпка
+    for dx in range(-2, 3):
+        img.putpixel((8 + dx, SIZE - 5), vary(cap, 10, rng))
+    for dx in range(-1, 2):
+        img.putpixel((8 + dx, SIZE - 6), vary(cap, 10, rng))
+    img.putpixel((8, SIZE - 5), (238, 232, 220, 255))  # пятнышко
+    return img
+
+
+def mushroom_red():
+    return _mushroom(22, (176, 42, 36))
+
+
+def mushroom_brown():
+    return _mushroom(23, (128, 92, 62))
+
+
+def cactus_side():
+    rng = random.Random(24)
+    img = filled((58, 122, 48))
+    # вертикальные рёбра
+    for x in (2, 7, 12):
+        for y in range(SIZE):
+            img.putpixel((x, y), vary((44, 100, 38), 6, rng))
+    # колючки
+    for _ in range(8):
+        img.putpixel((rng.randrange(SIZE), rng.randrange(SIZE)),
+                     (206, 214, 160, 255))
+    return img
+
+
+def cactus_top():
+    rng = random.Random(25)
+    img = filled((66, 132, 54))
+    for i in range(SIZE):
+        for x, y in ((i, 0), (i, SIZE - 1), (0, i), (SIZE - 1, i)):
+            img.putpixel((x, y), vary((48, 104, 40), 6, rng))
+    img.putpixel((8, 8), (206, 214, 160, 255))
+    return img
+
+
+def sugar_cane():
+    rng = random.Random(26)
+    img = _transparent()
+    # три стебля с сегментами
+    for x in (3, 8, 13):
+        for y in range(SIZE):
+            c = (118, 174, 88) if (y % 5) != 4 else (94, 142, 70)  # узлы
+            img.putpixel((x, y), vary(c, 10, rng))
+            if rng.random() < 0.35:
+                img.putpixel((max(0, min(SIZE - 1, x + rng.choice((-1, 1)))), y),
+                             vary((104, 158, 80), 10, rng))
+    return img
+
+
+def dead_bush():
+    rng = random.Random(27)
+    img = _transparent()
+    # веточки от основания
+    for _ in range(6):
+        x, y = 8, SIZE - 1
+        dx = rng.choice((-1, 0, 1))
+        for i in range(rng.randint(5, 9)):
+            img.putpixel((max(0, min(SIZE - 1, x)), max(0, y)),
+                         vary((124, 92, 48), 14, rng))
+            y -= 1
+            if rng.random() < 0.5:
+                x += dx
+    return img
+
+
 TEXTURES = {
     'grass_top': grass_top,
     'grass_side': grass_side,
@@ -163,6 +373,23 @@ TEXTURES = {
     'oak_log_top': oak_log_top,
     'leaves': leaves,
     'planks': planks,
+    'gravel': gravel,
+    'snow': snow,
+    'birch_log': birch_log,
+    'birch_log_top': birch_log_top,
+    'spruce_log': spruce_log,
+    'spruce_log_top': spruce_log_top,
+    'birch_leaves': birch_leaves,
+    'spruce_leaves': spruce_leaves,
+    'tall_grass': tall_grass,
+    'flower_red': flower_red,
+    'flower_yellow': flower_yellow,
+    'mushroom_red': mushroom_red,
+    'mushroom_brown': mushroom_brown,
+    'cactus_side': cactus_side,
+    'cactus_top': cactus_top,
+    'sugar_cane': sugar_cane,
+    'dead_bush': dead_bush,
 }
 
 

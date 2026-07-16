@@ -98,8 +98,10 @@ assert prev[1] == hit[1] + 1, f'prev должен быть над hit: {hit} {pr
 print(f'OK рейкаст вниз: hit={hit}')
 
 # --- 7. Вода: тонем медленно, пробел поднимает, падение в воду без урона ---
+# копаем открытую шахту до поверхности и заливаем дно водой
 px, pz = floor(player.x), floor(player.z)
-for y in range(5, 9):
+h_col = world.height_at(px, pz)
+for y in range(5, h_col + 1):
     world.set_block((px, y, pz), None)
 for y in range(5, 8):
     world.set_block((px, y, pz), 'water')
@@ -120,7 +122,7 @@ assert not big_falls, f'падение в воду нанесло урон: {big
 print('OK вода (плавучесть и защита от урона при падении)')
 
 # --- 8. Мелкая вода (глубина 1 блок) тоже гасит урон от падения ---
-for y in range(5, 9):
+for y in range(5, h_col + 1):
     world.set_block((px, y, pz), None)
 world.set_block((px, 5, pz), 'stone')
 world.set_block((px, 6, pz), 'water')

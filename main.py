@@ -120,6 +120,8 @@ class GameController(Entity):
     def _finish_break(self, pos, bid):
         """Блок сломан: кладём добычу в инвентарь и убираем блок из мира."""
         drops = get_drops(bid, inventory.selected_slot.item)
+        # вместимость проверяется по каждому дропу независимо: у блоков
+        # сейчас максимум один дроп; для мультидропов нужна суммарная проверка
         for item_key, count in drops:
             if not inventory.can_add(item_key, count):
                 # инвентарь полон: блок не ломаем, чтобы добыча не пропала

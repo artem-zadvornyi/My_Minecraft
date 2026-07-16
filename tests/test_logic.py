@@ -149,12 +149,12 @@ xs = [p[0] for p in chunk.positions]
 zs = [p[2] for p in chunk.positions]
 assert min(xs) >= -CHUNK_SIZE and max(xs) < 0, (min(xs), max(xs))
 assert min(zs) >= -CHUNK_SIZE and max(zs) < 0
-# послойность: y=0 камень, поверхность трава/песок, под ней земля
+# послойность: y=0 камень, на поверхности — блок поверхности биома
 x, z = -8, -8
 h = w.height_at(x, z)
 assert w.blocks[(x, 0, z)] == 'stone'
 top = w.blocks[(x, h, z)]
-assert top in ('grass', 'sand', 'wood'), top
+assert top in ('grass', 'dirt', 'sand', 'stone', 'snow', 'gravel'), top
 if top == 'grass':
     assert w.blocks[(x, h - 1, z)] == 'dirt'
     assert w.blocks[(x, h - DIRT_DEPTH, z)] == 'stone'

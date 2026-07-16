@@ -76,6 +76,25 @@ class BlockDef:
     tint: Color = None           # множитель цвета поверх текстуры
     behavior: str = None         # ключ будущего поведения (двери, печи...)
     sound_group: str = None      # группа звуков (задел)
+    render: str = 'cube'         # 'cube' | 'cross' (растения из двух квадов)
+
+
+@dataclass(frozen=True)
+class BiomeDef:
+    """Определение биома: блоки поверхности, деревья, украшения.
+
+    Параметры классификации (температура/влажность/рельеф) живут в
+    worldgen.py — биом описывает только СОДЕРЖИМОЕ, а не границы.
+    """
+    id: int
+    key: str
+    name: str
+    surface: str                 # блок поверхности (над водой)
+    subsurface: str              # слой под поверхностью (DIRT_DEPTH блоков)
+    underwater: str              # блок дна, если колонка под водой
+    trees: tuple = ()            # ((вид, вес), ...): 'oak'/'birch'/'spruce'
+    tree_chance: float = 0.0     # вероятность дерева на колонку
+    decorations: tuple = ()      # ((ключ блока, вероятность), ...)
 
 
 @dataclass(frozen=True)

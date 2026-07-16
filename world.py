@@ -4,8 +4,9 @@
 Для производительности каждый чанк — это ОДНА сущность Ursina с общим мешем
 (отдельная — для полупрозрачной воды), а не тысячи отдельных кубов.
 Коллизии и выбор блока делаются по словарю блоков, без физики Ursina.
+Содержимое чанков считает worldgen.Generator; здесь — жизненный цикл
+чанков, меши и правки игрока.
 """
-import random
 from math import floor
 
 from panda3d.core import TransparencyAttrib
@@ -13,70 +14,10 @@ from ursina import Entity, Mesh, Vec3, destroy
 from ursina.color import Color
 
 from game_data import BLOCKS
-from game_data.blocks import DIRT, GRASS, LEAVES, SAND, STONE, WATER, WOOD
 from rendering.texture_atlas import get_atlas
-from settings import (BASE_HEIGHT, CHUNK_SIZE, COARSE_STEP, DIRT_DEPTH,
-                      FOG_END, FOG_START, HEIGHT_AMPLITUDE, NOISE_SCALE,
-                      REACH, RENDER_DISTANCE, SAND_LEVEL, TREE_CHANCE,
-                      WATER_LEVEL, WORLD_HEIGHT, WORLD_SEED)
-
-
-def _make_noise(seed):
-    """Возвращает функцию noise2(x, z) -> примерно -1..1.
-
-    Приоритет: библиотека `noise` (быстрая, на C), затем `perlin-noise`
-    (чистый Python), затем встроенная реализация шума Перлина.
-    """
-    try:
-        from noise import pnoise2
-
-        def noise2(x, z):
-            return pnoise2(x, z, octaves=3, persistence=0.5, base=seed % 256)
-        return noise2
-    except ImportError:
-        pass
-    try:
-        from perlin_noise import PerlinNoise
-        gen_low = PerlinNoise(octaves=2, seed=seed)     # крупные холмы
-        gen_high = PerlinNoise(octaves=6, seed=seed + 1)  # мелкие детали
-
-        def noise2(x, z):
-            return (gen_low([x, z]) + gen_high([x, z]) * 0.35) * 2
-        return noise2
-    except ImportError:
-        pass
-
-    # Резервная чистая реализация классического шума Перлина
-    perm = list(range(256))
-    random.Random(seed).shuffle(perm)
-    perm += perm
-
-    def _fade(t):
-        return t * t * t * (t * (t * 6 - 15) + 10)
-
-    def _grad(h, x, y):
-        h &= 3
-        u = x if h < 2 else y
-        v = y if h < 2 else x
-        return (u if h & 1 == 0 else -u) + (v if h & 2 == 0 else -v)
-
-    def _perlin(x, y):
-        xi, yi = floor(x) & 255, floor(y) & 255
-        xf, yf = x - floor(x), y - floor(y)
-        u, v = _fade(xf), _fade(yf)
-        aa = perm[perm[xi] + yi]
-        ab = perm[perm[xi] + yi + 1]
-        ba = perm[perm[xi + 1] + yi]
-        bb = perm[perm[xi + 1] + yi + 1]
-        x1 = _grad(aa, xf, yf) + u * (_grad(ba, xf - 1, yf) - _grad(aa, xf, yf))
-        x2 = (_grad(ab, xf, yf - 1)
-              + u * (_grad(bb, xf - 1, yf - 1) - _grad(ab, xf, yf - 1)))
-        return (x1 + v * (x2 - x1)) * 0.7
-
-    def noise2(x, z):
-        # три октавы: холмы + детали
-        return _perlin(x, z) + _perlin(x * 2, z * 2) * 0.5 + _perlin(x * 4, z * 4) * 0.25
-    return noise2
+from settings import (CHUNK_SIZE, FOG_END, FOG_START, REACH,
+                      RENDER_DISTANCE, WORLD_SEED)
+from worldgen import Generator
 
 
 _WHITE = Color(1, 1, 1, 1)
@@ -126,62 +67,31 @@ class Chunk:
 class World:
     def __init__(self, seed=WORLD_SEED):
         self.seed = seed
-        self._noise2 = _make_noise(seed)
+        self.gen = Generator(seed)  # вся генерация — в worldgen.py
         self.blocks = {}   # (x, y, z) -> id блока (только загруженные чанки)
         self.chunks = {}   # (cx, cz) -> Chunk
         self.edits = {}    # правки игрока: (x, y, z) -> id или None (сломан)
-        self._height_cache = {}   # (x, z) -> высота поверхности
-        self._coarse_cache = {}   # узлы грубой сетки шума
         self._face_styles = {}    # кэш граней: (ключ, грань) -> (uv, Color)
         self._gen_queue = []      # чанки, ожидающие генерации
+        self._mesh_queue = []     # сгенерированы, ждут построения меша
         self._dirty = set()       # чанки, ожидающие перестройки меша
         self._last_player_chunk = None
 
     # ------------------------------------------------------------------
-    # Рельеф
+    # Рельеф (делегируется генератору)
     # ------------------------------------------------------------------
-    def _coarse_noise(self, gx, gz):
-        """Шум в узле грубой сетки (кэшируется)."""
-        key = (gx, gz)
-        n = self._coarse_cache.get(key)
-        if n is None:
-            n = self._noise2(gx * COARSE_STEP / NOISE_SCALE,
-                             gz * COARSE_STEP / NOISE_SCALE)
-            self._coarse_cache[key] = n
-        return n
-
     def height_at(self, x, z):
-        """Высота поверхности в колонке (x, z).
+        """Высота поверхности в колонке (x, z)."""
+        return self.gen.column_at(x, z).height
 
-        Шум считается на грубой сетке с шагом COARSE_STEP, между узлами —
-        билинейная интерполяция: так генерация в разы быстрее, а рельеф
-        остаётся гладким.
-        """
-        key = (x, z)
-        h = self._height_cache.get(key)
-        if h is not None:
-            return h
-        gx, gz = floor(x / COARSE_STEP), floor(z / COARSE_STEP)
-        fx = x / COARSE_STEP - gx
-        fz = z / COARSE_STEP - gz
-        n00 = self._coarse_noise(gx, gz)
-        n10 = self._coarse_noise(gx + 1, gz)
-        n01 = self._coarse_noise(gx, gz + 1)
-        n11 = self._coarse_noise(gx + 1, gz + 1)
-        n = (n00 * (1 - fx) * (1 - fz) + n10 * fx * (1 - fz)
-             + n01 * (1 - fx) * fz + n11 * fx * fz)
-        h = int(round(BASE_HEIGHT + n * HEIGHT_AMPLITUDE))
-        h = max(1, min(h, WORLD_HEIGHT - 10))
-        self._height_cache[key] = h
-        return h
+    def biome_at(self, x, z):
+        """Ключ биома в колонке (x, z)."""
+        return self.gen.column_at(x, z).biome
 
     def find_spawn(self):
-        """Ищет сухую точку возрождения недалеко от начала координат."""
-        for x in range(0, 200, 2):
-            h = self.height_at(x, 0)
-            if h > WATER_LEVEL:
-                return Vec3(x + 0.5, h + 2, 0.5)
-        return Vec3(0.5, self.height_at(0, 0) + 2, 0.5)
+        """Безопасная точка возрождения (суша, не река, лучше равнина)."""
+        x, y, z = self.gen.find_spawn()
+        return Vec3(x, y, z)
 
     # ------------------------------------------------------------------
     # Доступ к блокам
@@ -232,72 +142,21 @@ class World:
     def _generate_chunk(self, coord):
         chunk = Chunk(coord)
         self.chunks[coord] = chunk
-        blocks = self.blocks
-        positions = chunk.positions
-        x0, z0 = coord[0] * CHUNK_SIZE, coord[1] * CHUNK_SIZE
-        for lx in range(CHUNK_SIZE):
-            for lz in range(CHUNK_SIZE):
-                x, z = x0 + lx, z0 + lz
-                h = self.height_at(x, z)
-                # слои: камень в глубине, земля, сверху трава или песок
-                for y in range(0, h + 1):
-                    if y <= h - DIRT_DEPTH:
-                        bid = STONE.key
-                    elif y < h:
-                        bid = DIRT.key
-                    else:
-                        bid = SAND.key if h <= SAND_LEVEL else GRASS.key
-                    pos = (x, y, z)
-                    blocks[pos] = bid
-                    positions.add(pos)
-                # низины заполняются водой
-                for y in range(h + 1, WATER_LEVEL + 1):
-                    pos = (x, y, z)
-                    blocks[pos] = WATER.key
-                    positions.add(pos)
-                # деревья (только в глубине чанка, чтобы крона не выходила за край)
-                if (h > SAND_LEVEL and 2 <= lx <= CHUNK_SIZE - 3
-                        and 2 <= lz <= CHUNK_SIZE - 3):
-                    r = random.Random((x * 341873128712 + z * 132897987541) ^ self.seed)
-                    if r.random() < TREE_CHANCE:
-                        self._place_tree(chunk, x, h, z)
+        # блоки чанка целиком считает генератор (детерминированно,
+        # независимо от порядка загрузки чанков)
+        new_blocks = self.gen.generate_chunk(coord)
+        self.blocks.update(new_blocks)
+        chunk.positions = set(new_blocks)
         # применяем сохранённые правки игрока
         for pos, bid in self.edits.items():
             if self.chunk_coord(pos) == coord:
                 if bid is None:
-                    blocks.pop(pos, None)
-                    positions.discard(pos)
+                    self.blocks.pop(pos, None)
+                    chunk.positions.discard(pos)
                 else:
-                    blocks[pos] = bid
-                    positions.add(pos)
+                    self.blocks[pos] = bid
+                    chunk.positions.add(pos)
         return chunk
-
-    def _place_tree(self, chunk, x, h, z):
-        """Дерево: ствол из брёвен и крона из листвы."""
-        blocks = self.blocks
-        positions = chunk.positions
-        # крона (листву не ставим поверх существующих блоков)
-        for dy, radius in ((3, 2), (4, 2), (5, 1)):
-            y = h + dy
-            for dx in range(-radius, radius + 1):
-                for dz in range(-radius, radius + 1):
-                    if radius == 2 and abs(dx) == 2 and abs(dz) == 2:
-                        continue  # срезаем углы — крона выглядит круглее
-                    pos = (x + dx, y, z + dz)
-                    if pos not in blocks:
-                        blocks[pos] = LEAVES.key
-                        positions.add(pos)
-        # макушка крестом
-        for dx, dz in ((0, 0), (1, 0), (-1, 0), (0, 1), (0, -1)):
-            pos = (x + dx, h + 6, z + dz)
-            if pos not in blocks:
-                blocks[pos] = LEAVES.key
-                positions.add(pos)
-        # ствол (перекрывает листву)
-        for y in range(h + 1, h + 5):
-            pos = (x, y, z)
-            blocks[pos] = WOOD.key
-            positions.add(pos)
 
     # ------------------------------------------------------------------
     # Построение мешей
@@ -342,7 +201,20 @@ class World:
             if bid is None:
                 continue
             x, y, z = pos
-            is_liquid = BLOCKS[bid].liquid
+            block = BLOCKS[bid]
+            if block.render == 'cross':
+                # растение: два пересечённых по диагоналям квада
+                verts, tris, cols, uvs = solid
+                col, uv_quad = self._face_style(bid, 4, 1.0)
+                for (ax, az), (bx, bz) in (((0, 0), (1, 1)), ((1, 0), (0, 1))):
+                    b = len(verts)
+                    verts += ((x + ax, y, z + az), (x + bx, y, z + bz),
+                              (x + bx, y + 1, z + bz), (x + ax, y + 1, z + az))
+                    tris += (b, b + 1, b + 2, b, b + 2, b + 3)
+                    cols += (col, col, col, col)
+                    uvs += uv_quad
+                continue
+            is_liquid = block.liquid
             for fi, (n, corners, shade) in enumerate(_FACES):
                 npos = (x + n[0], y + n[1], z + n[2])
                 if npos[1] < 0:
@@ -389,6 +261,9 @@ class World:
         entity.set_shader_input('fog_end', FOG_END)
         if water:
             entity.setTransparency(TransparencyAttrib.M_alpha)
+        else:
+            # альфа-тест: дырки в текстурах растений (без сортировки)
+            entity.setTransparency(TransparencyAttrib.M_binary)
         return entity
 
     # ------------------------------------------------------------------
@@ -429,16 +304,22 @@ class World:
                    if max(abs(c[0] - pc[0]), abs(c[1] - pc[1])) > RENDER_DISTANCE + 1]
             for coord in far:
                 self._unload_chunk(coord)
-        if self._gen_queue:
-            coord = self._gen_queue.pop()
-            if coord not in self.chunks:
-                chunk = self._generate_chunk(coord)
-                self._build_chunk_mesh(chunk)
+        # бюджет кадра: генерация и меш разнесены по разным кадрам,
+        # чтобы пиковый кадр не тянул обе стоимости сразу
+        if self._mesh_queue:
+            coord = self._mesh_queue.pop(0)
+            if coord in self.chunks:
+                self._build_chunk_mesh(self.chunks[coord])
                 # сосед теперь может скрыть грани на общей границе
                 for d in ((1, 0), (-1, 0), (0, 1), (0, -1)):
                     nc = (coord[0] + d[0], coord[1] + d[1])
                     if nc in self.chunks:
                         self._dirty.add(nc)
+        elif self._gen_queue:
+            coord = self._gen_queue.pop()
+            if coord not in self.chunks:
+                self._generate_chunk(coord)
+                self._mesh_queue.append(coord)
         elif self._dirty:
             coord = self._dirty.pop()
             if coord in self.chunks:
@@ -453,6 +334,8 @@ class World:
         if chunk.water_entity:
             destroy(chunk.water_entity)
         self._dirty.discard(coord)
+        if coord in self._mesh_queue:
+            self._mesh_queue.remove(coord)
 
     # ------------------------------------------------------------------
     # Воксельный рейкаст

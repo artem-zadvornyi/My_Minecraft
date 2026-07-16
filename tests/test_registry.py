@@ -63,6 +63,9 @@ for block in BLOCKS:
     item = ITEMS[block.key]
     assert item.placeable_block == block.key, block.key
     assert item.max_stack == block.max_stack
+    # контракт стабильности: id предмета-блока равен явному id блока
+    # и не зависит от порядка регистрации
+    assert item.id == block.id, block.key
 # блоки и предметы — разные объекты разных типов
 assert type(BLOCKS['grass']) is not type(ITEMS['grass'])
 # вода: жидкость без коллизии, перекрываемая, не даёт дроп

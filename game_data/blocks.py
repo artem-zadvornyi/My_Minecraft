@@ -70,3 +70,76 @@ PLANKS = BLOCKS.register(BlockDef(
     hardness=3.0, tool='axe',
     faces=FaceTextures.all('planks'), color=rgb(162, 131, 79),
     drops=_self_drop('planks'), sound_group='wood'))
+
+GRAVEL = BLOCKS.register(BlockDef(
+    id=9, key='gravel', name='Гравий', category='natural',
+    hardness=0.8, tool='shovel',
+    faces=FaceTextures.all('gravel'), color=rgb(136, 126, 120),
+    drops=_self_drop('gravel'), sound_group='sand'))
+
+SNOW = BLOCKS.register(BlockDef(
+    id=10, key='snow', name='Снег', category='natural',
+    hardness=0.3, tool='shovel',
+    faces=FaceTextures.all('snow'), color=rgb(238, 244, 250),
+    drops=_self_drop('snow'), sound_group='sand'))
+
+BIRCH_LOG = BLOCKS.register(BlockDef(
+    id=11, key='birch_log', name='Берёза', category='wood',
+    hardness=3.0, tool='axe',
+    faces=FaceTextures.tbs('birch_log_top', 'birch_log_top', 'birch_log'),
+    color=rgb(216, 215, 204), top_color=rgb(198, 187, 155),
+    bottom_color=rgb(198, 187, 155),
+    drops=_self_drop('birch_log'), sound_group='wood'))
+
+SPRUCE_LOG = BLOCKS.register(BlockDef(
+    id=12, key='spruce_log', name='Ель', category='wood',
+    hardness=3.0, tool='axe',
+    faces=FaceTextures.tbs('spruce_log_top', 'spruce_log_top', 'spruce_log'),
+    color=rgb(74, 55, 34), top_color=rgb(122, 96, 60),
+    bottom_color=rgb(122, 96, 60),
+    drops=_self_drop('spruce_log'), sound_group='wood'))
+
+BIRCH_LEAVES = BLOCKS.register(BlockDef(
+    id=13, key='birch_leaves', name='Берёзовая листва', category='plants',
+    hardness=0.35,
+    faces=FaceTextures.all('birch_leaves'), color=rgb(96, 160, 78),
+    drops=(), sound_group='grass'))
+
+SPRUCE_LEAVES = BLOCKS.register(BlockDef(
+    id=14, key='spruce_leaves', name='Хвоя', category='plants',
+    hardness=0.35,
+    faces=FaceTextures.all('spruce_leaves'), color=rgb(38, 84, 56),
+    drops=(), sound_group='grass'))
+
+CACTUS = BLOCKS.register(BlockDef(
+    id=15, key='cactus', name='Кактус', category='plants',
+    hardness=0.5,
+    faces=FaceTextures.tbs('cactus_top', 'cactus_top', 'cactus_side'),
+    color=rgb(58, 122, 48), top_color=rgb(66, 132, 54),
+    bottom_color=rgb(66, 132, 54),
+    drops=_self_drop('cactus'), sound_group='grass'))
+
+
+def _plant(num_id, key, name, texture, drops=(), replace=True):
+    """Растение-декорация: два пересечённых квада, без коллизии."""
+    return BLOCKS.register(BlockDef(
+        id=num_id, key=key, name=name, category='plants',
+        hardness=0.05,
+        faces=FaceTextures.all(texture), color=rgb(88, 152, 58),
+        transparent=True, solid=False, collision=False, replaceable=replace,
+        blocks_skylight=False, drops=drops, sound_group='grass',
+        render='cross'))
+
+
+TALL_GRASS = _plant(16, 'tall_grass', 'Высокая трава', 'tall_grass')
+FLOWER_RED = _plant(17, 'flower_red', 'Мак', 'flower_red',
+                    drops=_self_drop('flower_red'))
+FLOWER_YELLOW = _plant(18, 'flower_yellow', 'Одуванчик', 'flower_yellow',
+                       drops=_self_drop('flower_yellow'))
+MUSHROOM_RED = _plant(19, 'mushroom_red', 'Мухомор', 'mushroom_red',
+                      drops=_self_drop('mushroom_red'))
+MUSHROOM_BROWN = _plant(20, 'mushroom_brown', 'Гриб', 'mushroom_brown',
+                        drops=_self_drop('mushroom_brown'))
+SUGAR_CANE = _plant(21, 'sugar_cane', 'Тростник', 'sugar_cane',
+                    drops=_self_drop('sugar_cane'))
+DEAD_BUSH = _plant(22, 'dead_bush', 'Сухой куст', 'dead_bush')

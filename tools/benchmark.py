@@ -70,11 +70,17 @@ for i in range(10):
     world.set_block((bx + i, h + 2, bz), 'stone')
     edit_times.append((perf_counter() - t0) * 1000)
 
+import resource  # noqa: E402
+
+peak_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / (1024 * 1024)
+
 print()
 print('=== БАЗОВЫЕ ЗАМЕРЫ ===')
 print(f'Python {sys.version.split()[0]}, шум: {noise_backend()}')
 print(f'Чанков: {len(coords)} ({CHUNK_SIZE}x{CHUNK_SIZE}, радиус {RENDER_DISTANCE})')
 print(f'Блоков в памяти: {len(world.blocks)}')
+print(f'Пик памяти процесса: {peak_mb:.0f} МБ')
+print(f'Биом спавна: {world.biome_at(int(spawn.x), int(spawn.z))}')
 print(f'Генерация чанка, мс: медиана {statistics.median(gen_times):.1f}, '
       f'макс {max(gen_times):.1f}')
 print(f'Меш чанка, мс: медиана {statistics.median(mesh_times):.1f}, '

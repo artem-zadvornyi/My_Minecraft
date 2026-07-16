@@ -9,19 +9,22 @@
 settings.py            (константы; ни от чего не зависит)
 game_data/             (РЕЕСТРЫ — источник истины об игровых данных)
     registry.py        (универсальный Registry: key + числовой id)
-    definitions.py     (BlockDef, ItemDef, Drop, FaceTextures)
-    blocks.py          (реестр BLOCKS: 8 блоков, id 1-8)
+    definitions.py     (BlockDef, ItemDef, BiomeDef, Drop, FaceTextures)
+    blocks.py          (реестр BLOCKS: 22 блока, id 1-22)
     items.py           (реестр ITEMS: предметы-блоки + палки/еда/инструменты)
+    biomes.py          (реестр BIOMES: 11 биомов — содержимое, не границы)
     mining.py          (break_time, can_harvest, get_drops)
     __init__.py        (validate(): перекрёстная проверка ссылок)
     ↑
+worldgen.py            (Generator: слои шума, биомы, реки, деревья —
+    ↑                   чистые функции от (x, z, зерно), без ursina)
 rendering/
     texture_atlas.py   (атлас 16x16-тайлов, UV, иконки; фолбэк на цвета)
     ↑
     ├── inventory.py   (Slot, Inventory — чистые данные)
     │       ↑
     │   crafting.py    (рецепты + окно крафта; ursina UI)
-    ├── world.py       (чанки, шум, меши, рейкаст; ursina Entity/Mesh)
+    ├── world.py       (жизненный цикл чанков, меши, рейкаст; ursina)
     ├── player.py      (физика и камера; ursina)
     ├── ui.py          (HUD; ursina)
     └── game.py        (режимы, здоровье, голод; ursina Entity)
