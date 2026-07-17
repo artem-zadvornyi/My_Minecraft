@@ -116,9 +116,10 @@ assert lost <= len(leaves) * 0.3, f'потеряно {lost}/{len(leaves)} лис
 print('OK деревья согласованы через границы чанков')
 
 # ----------------------------------------------------------------------
-# Спавн: суша, не река, предпочтительный биом, не в блоках
+# Спавн: суша, не река, предпочтительный биом, не в блоках.
+# Зёрна 14, 15, 153 исторически спавнили игрока внутри деревьев.
 # ----------------------------------------------------------------------
-for seed in (555, 123, 20260716):
+for seed in (555, 123, 20260716, 14, 15, 153) + tuple(range(30)):
     g = Generator(seed)
     sx, sy, sz = g.find_spawn()
     col = g.column_at(floor(sx), floor(sz))
@@ -127,15 +128,17 @@ for seed in (555, 123, 20260716):
     assert col.biome in ('plains', 'forest', 'birch_forest'), \
         f'спавн в {col.biome}: seed={seed}'
     assert sy >= col.height + 1, 'спавн внутри рельефа'
-    # клетки ног и головы свободны от блоков с коллизией
+    # клетки ног и головы свободны от блоков с коллизией (включая
+    # стволы и кроны деревьев, пришедшие из соседних колонок)
     chunk_coord = (floor(floor(sx) / CHUNK_SIZE), floor(floor(sz) / CHUNK_SIZE))
     blocks = g.generate_chunk(chunk_coord)
-    for dy in (0, 1):
+    for dy in (-1, 0, 1):
         pos = (floor(sx), floor(sy) + dy, floor(sz))
         bid = blocks.get(pos)
-        assert bid is None or not BLOCKS[bid].collision, \
-            f'спавн внутри блока {bid}: seed={seed}'
-print('OK спавн безопасен')
+        assert (bid is None or not BLOCKS[bid].collision
+                or pos[1] <= col.height), \
+            f'спавн внутри блока {bid}: seed={seed}, {pos}'
+print('OK спавн безопасен (36 зёрен, включая исторически плохие)')
 
 assert WATER_LEVEL == SEA
 print('WORLDGEN OK')

@@ -191,6 +191,30 @@ class World:
             self._face_styles[key] = style
         return style
 
+    def _cross_style(self, bid):
+        """(цвет, UV) для квадов растения (кэшируется отдельно от граней).
+
+        UV идут в порядке вершин квада (низ-лево, низ-право, верх-право,
+        верх-лево) — переиспользование развёртки боковой грани куба
+        поворачивало текстуру на 90°.
+        """
+        key = (bid, 'cross')
+        style = self._face_styles.get(key)
+        if style is None:
+            block = BLOCKS[bid]
+            atlas = get_atlas()
+            rect = atlas.uv(block.faces.north) if atlas else None
+            if rect is not None:
+                base = block.tint if block.tint is not None else _WHITE
+            else:
+                rect = atlas.white_uv if atlas else (0.0, 0.0, 1.0, 1.0)
+                base = block.color
+            u0, v0, u1, v1 = rect
+            col = Color(base[0], base[1], base[2], base[3])
+            style = (col, ((u0, v0), (u1, v0), (u1, v1), (u0, v1)))
+            self._face_styles[key] = style
+        return style
+
     def _build_chunk_mesh(self, chunk):
         """Собирает меш чанка: только грани, видимые снаружи."""
         blocks = self.blocks
@@ -205,7 +229,7 @@ class World:
             if block.render == 'cross':
                 # растение: два пересечённых по диагоналям квада
                 verts, tris, cols, uvs = solid
-                col, uv_quad = self._face_style(bid, 4, 1.0)
+                col, uv_quad = self._cross_style(bid)
                 for (ax, az), (bx, bz) in (((0, 0), (1, 1)), ((1, 0), (0, 1))):
                     b = len(verts)
                     verts += ((x + ax, y, z + az), (x + bx, y, z + bz),
@@ -221,8 +245,11 @@ class World:
                     continue  # дно мира не рисуем
                 nb = blocks.get(npos)
                 if is_liquid:
-                    # жидкость рисует грань только на границе с воздухом
-                    if nb is not None:
+                    # жидкость рисует грань к воздуху и к прозрачным
+                    # нежидким блокам (растение, поставленное в воду,
+                    # не должно оставлять дыру в поверхности воды)
+                    if nb is not None and (BLOCKS[nb].liquid
+                                           or not BLOCKS[nb].transparent):
                         continue
                     verts, tris, cols, uvs = liquid
                 else:

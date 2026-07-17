@@ -372,8 +372,28 @@ class Generator:
     # ------------------------------------------------------------------
     # Точка возрождения
     # ------------------------------------------------------------------
+    def _spawn_clear(self, x, z, height):
+        """Свободны ли клетки игрока (ноги/голова) от деревьев и украшений.
+
+        Спавн в лесу может попасть в ствол или под крону соседнего
+        дерева — проверяем все деревья, чьи кроны достают до колонки.
+        """
+        cells = {(x, height + 1, z), (x, height + 2, z), (x, height + 3, z)}
+        for tx in range(x - TREE_MARGIN, x + TREE_MARGIN + 1):
+            for tz in range(z - TREE_MARGIN, z + TREE_MARGIN + 1):
+                tree = self.tree_at(tx, tz)
+                if tree is None:
+                    continue
+                trunk, leaves = tree
+                if cells & (trunk.keys() | leaves.keys()):
+                    return False
+        for pos, bid in self.decorations_at(x, z):
+            if BLOCKS[bid].collision and pos in cells:
+                return False
+        return True
+
     def find_spawn(self):
-        """Безопасный спавн: суша, не река; лучше равнина или лес."""
+        """Безопасный спавн: суша, не река, не в блоках; лучше равнина/лес."""
         preferred = {'plains', 'forest', 'birch_forest'}
         fallback = None
         for radius in range(0, 400, 8):
@@ -385,6 +405,8 @@ class Generator:
                 col = self.column_at(dx, dz)
                 if col.height <= SEA + 1 or col.river:
                     continue  # под водой/у воды не спавнимся
+                if not self._spawn_clear(dx, dz, col.height):
+                    continue  # внутри ствола или под кроной
                 if col.biome in preferred:
                     return (dx + 0.5, col.height + 2, dz + 0.5)
                 if fallback is None and col.biome not in ('ocean', 'beach'):
